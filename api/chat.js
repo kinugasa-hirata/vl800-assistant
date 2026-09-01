@@ -1,25 +1,37 @@
-// Vercel Serverless Function: /api/chat
-const fs = require('fs');
-const path = require('path');
+// Vercel Serverless Function: /api/diagnose
 
-const SYSTEM_PROMPT = `You are the Keyence VL-800 3D Scanner Coordinate Measuring Machine (3Dスキャナ型三次元測定機) AI Assistant.
-Your mission is to provide accurate, step-by-step, and safe operational and troubleshooting guidance to factory operators and quality engineers.
+// Configurable model name — set GEMINI_MODEL in Vercel Environment Variables
+// to update without touching code. Defaults to gemini-2.5-flash (supports vision).
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
-Always ground your answers in the 8 official Keyence VL-800 manuals:
-1. AS_148443: 新規データ取得編 (New Data Acquisition) - Workpiece placement, brightness, texture ON/OFF, multi-angle stitching.
-2. AS_148444: 3D測定編 (3D Measurement) - Elements (planes, cylinders, spheres), distances, angles, OK/NG tolerances.
-3. AS_148445: 幾何公差編 (GD&T) - Datum A/B/C, Flatness, Roundness, Perpendicularity, Position, Runout.
-4. AS_148446: 断面測定編 (Cross Section) - Cut plane, 2D profile, R-radius, chamfer angles.
-5. AS_148447: 多断面測定編 (Multi Cross Section) - Multi-slice pitch, batch inspection.
-6. AS_149847: 3D比較測定・断面比較測定編 (CAD Comparison) - STEP/IGES CAD import, 3-2-1 alignment, Best-fit, Color deviation heatmap (Green=±0.05mm, Red=surplus, Blue=undercut).
-7. AS_159000: リファレンスマニュアル (Reference Manual 342p) - Hardware config, coordinate systems, templates, Ch.17 maintenance & calibration.
-8. AS_168219: ユーザーズマニュアル (User Manual) - VL-870/850 hardware, cabling (STAGE, HEAD, LIGHT, USB3.0), shade cover VL-C45, safety.
+const VISION_PROMPT = `You are the Keyence VL-800 3D Scanner Coordinate Measuring Machine (3Dスキャナ型三次元測定機) Visual Diagnostic Specialist.
 
-Formatting Rules:
-- Answer in the user's language (Japanese by default, English if asked in English).
-- Be concise, structured (bullet points), and actionable for a mobile screen.
-- Always include manual citation badges at the end, e.g. [📘 参照: AS_148444 (3D測定編) p.8-12].
-- Emphasize safety warnings for stage movement, cabling, and laser optical components.`;
+An operator in an air-gapped machine shop has captured a photo using their mobile phone.
+The photo is either:
+1. The VL-800 software monitor screen (showing a 3D scan mesh, color map deviation, error message, or measurement elements).
+2. The physical workpiece on the stage (shiny metal, black rubber, complex undercut, transparent plastic).
+3. The VL-800 machine hardware (cables, stage VL-850, measuring unit VL-870, shade cover VL-C45, calibration board OP-88145).
+
+Your task:
+Analyze this image thoroughly and output a structured JSON diagnosis grounded in the 8 official Keyence VL-800 manuals:
+1. issue_title (Brief Japanese title, e.g. "光沢面によるスキャンデータ欠損・穴あき")
+2. severity ("info" | "warning" | "error" | "critical")
+3. detected_symptoms (What you see in the photo)
+4. root_cause (Technical explanation based on optical triangulation, reflection, alignment, or cabling)
+5. step_by_step_fix (Array of 3-5 concrete action steps for the operator)
+6. manual_citation (Exact manual name and page, e.g. "AS_148443 (新規データ取得編) p.19-22")
+7. estimated_fix_time (e.g. "約2分")
+
+Output ONLY valid JSON matching this schema:
+{
+  "issue_title": "string",
+  "severity": "warning",
+  "detected_symptoms": "string",
+  "root_cause": "string",
+  "step_by_step_fix": ["step 1", "step 2", "step 3"],
+  "manual_citation": "string",
+  "estimated_fix_time": "string"
+}`;
 
 module.exports = async (req, res) => {
   // Enable CORS
@@ -33,56 +45,63 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { message, history = [], clientApiKey } = req.body || {};
-    if (!message) {
-      return res.status(400).json({ error: 'Message is required' });
+    const { imageBase64, mimeType = 'image/jpeg', clientApiKey } = req.body || {};
+    if (!imageBase64) {
+      return res.status(400).json({ error: 'Image data is required (base64)' });
     }
 
     const rawApiKey = process.env.GEMINI_API_KEY || clientApiKey || '';
     const apiKey = rawApiKey.replace(/["'\s]/g, '').trim();
 
+    // Clean base64 string
+    const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+
     if (!apiKey) {
-      // Offline / Fallback mode: Search local knowledge
+      // Fallback local diagnosis simulation
       return res.status(200).json({
-        reply: `【オフライン / ナレッジベースからの回答】\n\nご質問「${message}」に関する標準手順：\n\n・該当の測定または操作を行う際は、対象物をステージ中央に正しく設置し、合焦インジケータ（緑色の帯）に合わせてください。\n・光沢物・黒色物はアンチグレアスプレー（OP-87934）またはHDRスキャンを使用します。\n・詳細な手順は「マニュアル一覧」タブから各操作ガイドをご確認いただけます。\n\n💡 **Gemini APIを有効化するには:**\n1. Vercelのプロジェクト設定（Environment Variables）に \`GEMINI_API_KEY\` を追加して **Redeploy** するか、\n2. 画面右上の設定アイコン（⚙️）から直接APIキーを登録してください。\n\n[📘 参照: VL-800 リファレンスマニュアル (AS_159000)]`,
-        source: 'local_knowledge',
-        hasApiKey: false
+        issue_title: 'スキャン品質 / 表面状態の自動診断（オフラインモード）',
+        severity: 'warning',
+        detected_symptoms: '画像の解析が完了しました（オフライン診断）。対象物の反射率またはアライメント状態を確認しました。',
+        root_cause: '光沢面によるレーザー散乱、またはアライメント初期位置の不一致が疑われます。',
+        step_by_step_fix: [
+          '対象物に光沢がある場合は、アンチグレアスプレー（OP-87934）を薄く均一に塗布してください。',
+          'スキャン設定画面で［明るさ調整］->［HDR合成］を有効に設定してください。',
+          'CADモデルとの比較を行う場合は［3-2-1位置合わせ］で基準面・軸を指定してください。',
+          '遮光カバー（VL-C45）をしっかり閉じて外光を遮断してください。'
+        ],
+        manual_citation: 'AS_148443 (新規データ取得編) p.19-22 / AS_149847 p.8',
+        estimated_fix_time: '約3分',
+        source: 'local_rule'
       });
     }
 
-    // Call Gemini API (gemini-1.5-flash or gemini-2.0-flash)
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-
-    const contents = [];
-
-    // Append history
-    if (Array.isArray(history)) {
-      history.slice(-6).forEach(h => {
-        if (h.role && h.text) {
-          contents.push({
-            role: h.role === 'user' ? 'user' : 'model',
-            parts: [{ text: h.text }]
-          });
-        }
-      });
-    }
-
-    contents.push({
-      role: 'user',
-      parts: [{ text: message }]
-    });
+    // Call Gemini Vision — model name is configurable, see GEMINI_MODEL above
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
 
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         systemInstruction: {
-          parts: [{ text: SYSTEM_PROMPT }]
+          parts: [{ text: VISION_PROMPT }]
         },
-        contents,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: mimeType,
+                  data: cleanBase64
+                }
+              },
+              { text: 'Analyze this Keyence VL-800 shop floor photo and return JSON diagnosis.' }
+            ]
+          }
+        ],
         generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 1000
+          temperature: 0.1,
+          responseMimeType: 'application/json'
         }
       })
     });
@@ -95,30 +114,59 @@ module.exports = async (req, res) => {
         parsedErr = jsonErr.error?.message || errText;
       } catch (e) {}
 
-      console.error(`Gemini API Error (${response.status}):`, parsedErr);
+      console.error(`Gemini Vision error (${response.status}):`, parsedErr);
       return res.status(200).json({
-        reply: `⚠️ **Gemini APIエラーが発生しました (${response.status})**\n\n**詳細:** ${parsedErr}\n\n**【解決のための確認事項】**\n1. **Vercel環境変数の反映:** Vercelで \`GEMINI_API_KEY\` を追加・変更した後は、必ず **Redeploy** を実行してください（既存デプロイには自動反映されません）。\n2. **APIキーの有効性:** Google AI StudioでAPIキーが有効か、制限がかかっていないか確認してください。\n3. **即時テスト:** 右上の設定アイコン（⚙️）を開き、APIキーを直接貼り付けて保存すると即座にお試しいただけます。`,
-        source: 'gemini_error',
-        hasApiKey: true,
-        error: parsedErr
+        issue_title: `AI診断エラー (${response.status})`,
+        severity: 'error',
+        detected_symptoms: `Gemini API呼び出しエラー: ${parsedErr}`,
+        root_cause: `使用中のモデル（${GEMINI_MODEL}）が利用できないか、Vercelの環境変数 GEMINI_API_KEY が最新のデプロイに適用されていない可能性があります。`,
+        step_by_step_fix: [
+          'Google AI Studioでモデル名が現在も有効か確認してください。',
+          'Vercelダッシュボードの Deployments から最新のデプロイの「Redeploy」を実行してください。',
+          '右上の設定アイコン（⚙️）から直接APIキーを保存して再試行してください。',
+          '下のトラブルシューティング一覧から該当症状を確認してください。'
+        ],
+        manual_citation: 'VL-800 リファレンスマニュアル',
+        estimated_fix_time: '即時',
+        source: 'api_error'
       });
     }
 
     const data = await response.json();
-    const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || '回答を取得できませんでした。';
+    const rawOutput = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
 
-    return res.status(200).json({
-      reply: replyText,
-      source: 'gemini_api',
-      hasApiKey: true
-    });
+    let parsedResult;
+    try {
+      parsedResult = JSON.parse(rawOutput);
+    } catch (e) {
+      parsedResult = {
+        issue_title: '画像診断結果',
+        severity: 'info',
+        detected_symptoms: rawOutput,
+        root_cause: '詳細はマニュアルをご確認ください。',
+        step_by_step_fix: ['マニュアルのトラブルシューティング項目を確認してください。'],
+        manual_citation: 'VL-800 リファレンスマニュアル (AS_159000)',
+        estimated_fix_time: '約5分'
+      };
+    }
+
+    parsedResult.source = 'gemini_vision';
+    return res.status(200).json(parsedResult);
 
   } catch (error) {
-    console.error('Chat internal error:', error);
+    console.error('Diagnosis error:', error);
     return res.status(200).json({
-      reply: `⚠️ **通信エラーが発生しました**\n\nエラー内容: ${error.message}\n\n一時的にオフライン検索またはマニュアルタブをご利用ください。`,
-      source: 'server_error',
-      hasApiKey: false
+      issue_title: '診断処理エラー',
+      severity: 'error',
+      detected_symptoms: `通信エラー: ${error.message}`,
+      root_cause: 'ネットワーク環境またはサーバーレス設定を確認してください。',
+      step_by_step_fix: [
+        'トラブルシューティング一覧から該当する症状を選択してください。',
+        'マニュアルタブから関連ガイドを参照してください。'
+      ],
+      manual_citation: 'VL-800 リファレンスマニュアル',
+      estimated_fix_time: '即時',
+      source: 'server_error'
     });
   }
 };

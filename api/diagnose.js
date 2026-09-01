@@ -1,4 +1,9 @@
 // Vercel Serverless Function: /api/diagnose
+
+// Configurable model name — set GEMINI_MODEL in Vercel Environment Variables
+// to update without touching code. Defaults to gemini-2.5-flash (supports vision).
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
 const VISION_PROMPT = `You are the Keyence VL-800 3D Scanner Coordinate Measuring Machine (3Dスキャナ型三次元測定機) Visual Diagnostic Specialist.
 
 An operator in an air-gapped machine shop has captured a photo using their mobile phone.
@@ -70,8 +75,8 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Call Gemini 1.5 Flash Vision
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    // Call Gemini Vision — model name is configurable, see GEMINI_MODEL above
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -114,8 +119,9 @@ module.exports = async (req, res) => {
         issue_title: `AI診断エラー (${response.status})`,
         severity: 'error',
         detected_symptoms: `Gemini API呼び出しエラー: ${parsedErr}`,
-        root_cause: 'Vercelの環境変数 GEMINI_API_KEY が最新のデプロイに適用されていないか、APIキーが無効です。',
+        root_cause: `使用中のモデル（${GEMINI_MODEL}）が利用できないか、Vercelの環境変数 GEMINI_API_KEY が最新のデプロイに適用されていない可能性があります。`,
         step_by_step_fix: [
+          'Google AI Studioでモデル名が現在も有効か確認してください。',
           'Vercelダッシュボードの Deployments から最新のデプロイの「Redeploy」を実行してください。',
           '右上の設定アイコン（⚙️）から直接APIキーを保存して再試行してください。',
           '下のトラブルシューティング一覧から該当症状を確認してください。'
@@ -128,7 +134,7 @@ module.exports = async (req, res) => {
 
     const data = await response.json();
     const rawOutput = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    
+
     let parsedResult;
     try {
       parsedResult = JSON.parse(rawOutput);
