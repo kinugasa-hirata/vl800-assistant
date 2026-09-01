@@ -45,7 +45,9 @@ function enrichResponse(res) {
   }
 }
 
-const server = http.createServer(async (req, res) => {
+// ---- This is now a PLAIN FUNCTION, not an http.Server ----
+// Vercel calls this directly as handler(req, res) for every request.
+async function handler(req, res) {
   enrichResponse(res);
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   let pathname = parsedUrl.pathname;
@@ -108,12 +110,16 @@ const server = http.createServer(async (req, res) => {
       res.end(content);
     }
   });
-});
+}
 
-if (process.env.NODE_ENV !== 'test') {
-  server.listen(PORT, '0.0.0.0', () => {
+// Only start a real listening server for LOCAL DEV.
+// Vercel sets its own env vars (VERCEL / VERCEL_ENV) — when those are present,
+// skip listen() entirely and just let Vercel call `handler` directly.
+if (!process.env.VERCEL) {
+  http.createServer(handler).listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Keyence VL-800 Assistant running on http://0.0.0.0:${PORT}`);
   });
 }
 
-module.exports = server;
+// Export the plain function — THIS is what Vercel needs.
+module.exports = handler;
