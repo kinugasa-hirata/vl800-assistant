@@ -38,12 +38,13 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY || clientApiKey;
+    const rawApiKey = process.env.GEMINI_API_KEY || clientApiKey || '';
+    const apiKey = rawApiKey.replace(/["'\s]/g, '').trim();
 
     if (!apiKey) {
       // Offline / Fallback mode: Search local knowledge
       return res.status(200).json({
-        reply: `【オフライン/事前登録ナレッジからの回答】\n\nご質問「${message}」に関する標準手順：\n\n・該当の測定または操作を行う際は、対象物をステージ中央に正しく設置し、合焦インジケータ（緑色の帯）に合わせてください。\n・光沢物・黒色物はアンチグレアスプレー（OP-87934）またはHDRスキャンを使用します。\n・詳細な手順は「マニュアル一覧」タブから各操作ガイドをご確認いただけます。\n\n※ Gemini APIキーを設定すると、AIによるリアルタイム対話とより詳細な自動診断が有効になります。\n\n[📘 参照: VL-800 リファレンスマニュアル (AS_159000)]`,
+        reply: `【オフライン / ナレッジベースからの回答】\n\nご質問「${message}」に関する標準手順：\n\n・該当の測定または操作を行う際は、対象物をステージ中央に正しく設置し、合焦インジケータ（緑色の帯）に合わせてください。\n・光沢物・黒色物はアンチグレアスプレー（OP-87934）またはHDRスキャンを使用します。\n・詳細な手順は「マニュアル一覧」タブから各操作ガイドをご確認いただけます。\n\n💡 **Gemini APIを有効化するには:**\n1. Vercelのプロジェクト設定（Environment Variables）に \`GEMINI_API_KEY\` を追加して **Redeploy** するか、\n2. 画面右上の設定アイコン（⚙️）から直接APIキーを登録してください。\n\n[📘 参照: VL-800 リファレンスマニュアル (AS_159000)]`,
         source: 'local_knowledge',
         hasApiKey: false
       });
@@ -52,16 +53,7 @@ module.exports = async (req, res) => {
     // Call Gemini API (gemini-1.5-flash or gemini-2.0-flash)
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
-    const contents = [
-      {
-        role: 'user',
-        parts: [{ text: SYSTEM_PROMPT }]
-      },
-      {
-        role: 'model',
-        parts: [{ text: '理解いたしました。Keyence VL-800 3Dスキャナ型三次元測定機の専門AIアシスタントとして、8冊の公式マニュアルに基づき的確で安全な操作・トラブルシューティング手順を回答いたします。' }]
-      }
-    ];
+    const contents = [];
 
     // Append history
     if (Array.isArray(history)) {
@@ -84,6 +76,9 @@ module.exports = async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: SYSTEM_PROMPT }]
+        },
         contents,
         generationConfig: {
           temperature: 0.2,
@@ -94,7 +89,19 @@ module.exports = async (req, res) => {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Gemini API error (${response.status}): ${errText}`);
+      let parsedErr = errText;
+      try {
+        const jsonErr = JSON.parse(errText);
+        parsedErr = jsonErr.error?.message || errText;
+      } catch (e) {}
+
+      console.error(`Gemini API Error (${response.status}):`, parsedErr);
+      return res.status(200).json({
+        reply: `⚠️ **Gemini APIエラーが発生しました (${response.status})**\n\n**詳細:** ${parsedErr}\n\n**【解決のための確認事項】**\n1. **Vercel環境変数の反映:** Vercelで \`GEMINI_API_KEY\` を追加・変更した後は、必ず **Redeploy** を実行してください（既存デプロイには自動反映されません）。\n2. **APIキーの有効性:** Google AI StudioでAPIキーが有効か、制限がかかっていないか確認してください。\n3. **即時テスト:** 右上の設定アイコン（⚙️）を開き、APIキーを直接貼り付けて保存すると即座にお試しいただけます。`,
+        source: 'gemini_error',
+        hasApiKey: true,
+        error: parsedErr
+      });
     }
 
     const data = await response.json();
@@ -107,10 +114,11 @@ module.exports = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Chat error:', error);
-    return res.status(500).json({
-      error: error.message || 'Internal server error',
-      fallbackReply: '現在AIサービスに接続できません。マニュアル一覧またはトラブルシューティング集をご確認ください。'
+    console.error('Chat internal error:', error);
+    return res.status(200).json({
+      reply: `⚠️ **通信エラーが発生しました**\n\nエラー内容: ${error.message}\n\n一時的にオフライン検索またはマニュアルタブをご利用ください。`,
+      source: 'server_error',
+      hasApiKey: false
     });
   }
 };

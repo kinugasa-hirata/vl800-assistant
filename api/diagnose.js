@@ -45,7 +45,8 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Image data is required (base64)' });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY || clientApiKey;
+    const rawApiKey = process.env.GEMINI_API_KEY || clientApiKey || '';
+    const apiKey = rawApiKey.replace(/["'\s]/g, '').trim();
 
     // Clean base64 string
     const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
@@ -53,9 +54,9 @@ module.exports = async (req, res) => {
     if (!apiKey) {
       // Fallback local diagnosis simulation
       return res.status(200).json({
-        issue_title: 'スキャンデータ品質 / 表面状態の自動診断',
+        issue_title: 'スキャン品質 / 表面状態の自動診断（オフラインモード）',
         severity: 'warning',
-        detected_symptoms: '画像の解析が完了しました（オフライン診断モード）。対象物の反射率またはアライメント状態を確認しました。',
+        detected_symptoms: '画像の解析が完了しました（オフライン診断）。対象物の反射率またはアライメント状態を確認しました。',
         root_cause: '光沢面によるレーザー散乱、またはアライメント初期位置の不一致が疑われます。',
         step_by_step_fix: [
           '対象物に光沢がある場合は、アンチグレアスプレー（OP-87934）を薄く均一に塗布してください。',
@@ -76,17 +77,20 @@ module.exports = async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: VISION_PROMPT }]
+        },
         contents: [
           {
             role: 'user',
             parts: [
-              { text: VISION_PROMPT },
               {
                 inlineData: {
                   mimeType: mimeType,
                   data: cleanBase64
                 }
-              }
+              },
+              { text: 'Analyze this Keyence VL-800 shop floor photo and return JSON diagnosis.' }
             ]
           }
         ],
@@ -99,7 +103,27 @@ module.exports = async (req, res) => {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Gemini Vision error (${response.status}): ${errText}`);
+      let parsedErr = errText;
+      try {
+        const jsonErr = JSON.parse(errText);
+        parsedErr = jsonErr.error?.message || errText;
+      } catch (e) {}
+
+      console.error(`Gemini Vision error (${response.status}):`, parsedErr);
+      return res.status(200).json({
+        issue_title: `AI診断エラー (${response.status})`,
+        severity: 'error',
+        detected_symptoms: `Gemini API呼び出しエラー: ${parsedErr}`,
+        root_cause: 'Vercelの環境変数 GEMINI_API_KEY が最新のデプロイに適用されていないか、APIキーが無効です。',
+        step_by_step_fix: [
+          'Vercelダッシュボードの Deployments から最新のデプロイの「Redeploy」を実行してください。',
+          '右上の設定アイコン（⚙️）から直接APIキーを保存して再試行してください。',
+          '下のトラブルシューティング一覧から該当症状を確認してください。'
+        ],
+        manual_citation: 'VL-800 リファレンスマニュアル',
+        estimated_fix_time: '即時',
+        source: 'api_error'
+      });
     }
 
     const data = await response.json();
@@ -125,19 +149,18 @@ module.exports = async (req, res) => {
 
   } catch (error) {
     console.error('Diagnosis error:', error);
-    return res.status(500).json({
-      error: error.message || 'Vision diagnosis failed',
-      fallback: {
-        issue_title: '診断処理エラー',
-        severity: 'error',
-        detected_symptoms: '画像解析サーバーへの通信で問題が発生しました。',
-        root_cause: 'ネットワーク環境またはAPIキー設定を確認してください。',
-        step_by_step_fix: [
-          'トラブルシューティング一覧から該当する症状を選択してください。',
-          'マニュアルタブから関連ガイドを参照してください。'
-        ],
-        manual_citation: 'VL-800 リファレンスマニュアル'
-      }
+    return res.status(200).json({
+      issue_title: '診断処理エラー',
+      severity: 'error',
+      detected_symptoms: `通信エラー: ${error.message}`,
+      root_cause: 'ネットワーク環境またはサーバーレス設定を確認してください。',
+      step_by_step_fix: [
+        'トラブルシューティング一覧から該当する症状を選択してください。',
+        'マニュアルタブから関連ガイドを参照してください。'
+      ],
+      manual_citation: 'VL-800 リファレンスマニュアル',
+      estimated_fix_time: '即時',
+      source: 'server_error'
     });
   }
 };
