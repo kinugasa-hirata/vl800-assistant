@@ -1,20 +1,8 @@
 {
   "name": "vl800-mobile-assistant",
   "version": "1.0.0",
-  "description": "AI Mobile Assistant and Visual Troubleshooting App for Keyence VL-800 3D Scanner CMM",
-  "main": "public/index.html",
+  "private": true,
   "scripts": {
     "dev": "node scripts/dev-server.js"
-  },
-  "keywords": [
-    "keyence",
-    "vl-800",
-    "cmm",
-    "3d-scanner",
-    "ai-assistant",
-    "pwa",
-    "gemini"
-  ],
-  "author": "Quality Engineering Team",
-  "license": "MIT"
+  }
 }
