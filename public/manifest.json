@@ -1,16 +1,43 @@
 {
   "name": "Keyence VL-800 Mobile Assistant",
-  "short_name": "VL-800 Assist",
-  "description": "AI-powered mobile assistant and camera diagnostic for Keyence VL-800 3D Scanner CMM",
-  "start_url": "./index.html",
+  "short_name": "VL-800",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#0B1120",
+  "background_color": "#070D18",
   "theme_color": "#0B1120",
   "orientation": "portrait-primary",
+  "description": "Keyence VL-800 3D Scanner CMM AI Mobile Assistant & Visual Troubleshooting",
+  "categories": ["utilities", "productivity", "business"],
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='100' fill='%230B1120'/%3E%3Ccircle cx='256' cy='256' r='180' fill='none' stroke='%230EA5E9' stroke-width='24' stroke-dasharray='12 8'/%3E%3Cpolygon points='256,120 370,320 142,320' fill='none' stroke='%2338BDF8' stroke-width='20'/%3E%3Ccircle cx='256' cy='256' r='32' fill='%2338BDF8'/%3E%3Ctext x='256' y='420' font-family='sans-serif' font-size='56' font-weight='bold' fill='%23FFFFFF' text-anchor='middle'%3EVL-800%3C/text%3E%3C/svg%3E",
-      "sizes": "192x192 512x512",
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
       "type": "image/svg+xml"
     }
   ]

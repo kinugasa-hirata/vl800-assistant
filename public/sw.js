@@ -1,5 +1,5 @@
 // Service Worker for VL-800 Mobile Assistant (Offline PWA)
-const CACHE_NAME = 'vl800-assistant-v2';
+const CACHE_NAME = 'vl800-assistant-v3';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -9,7 +9,10 @@ const ASSETS_TO_CACHE = [
   '/js/knowledge_db.js',
   '/js/diagnostic.js',
   '/js/chat.js',
-  '/js/wizard.js'
+  '/js/wizard.js',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/icon.svg'
 ];
 
 self.addEventListener('install', (event) => {

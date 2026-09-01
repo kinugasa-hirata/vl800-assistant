@@ -67,6 +67,55 @@ window.VL800_App = {
     this.updateOnlineStatus();
     window.addEventListener('online', () => this.updateOnlineStatus());
     window.addEventListener('offline', () => this.updateOnlineStatus());
+
+    // PWA Install Prompt Handler (Android & Desktop Chrome)
+    this.setupInstallPrompt();
+  },
+
+  deferredInstallPrompt: null,
+
+  setupInstallPrompt() {
+    const banner = document.getElementById('pwa-install-banner');
+    const installBtn = document.getElementById('btn-pwa-install');
+    const dismissBtn = document.getElementById('btn-pwa-dismiss');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      // Prevent automatic mini-infobar on mobile
+      e.preventDefault();
+      this.deferredInstallPrompt = e;
+
+      // Show custom sleek install banner
+      if (banner && !sessionStorage.getItem('vl800_dismiss_install')) {
+        banner.style.display = 'flex';
+      }
+    });
+
+    if (installBtn) {
+      installBtn.addEventListener('click', async () => {
+        if (!this.deferredInstallPrompt) {
+          alert('Androidのブラウザメニュー（右上︙）から「ホーム画面に追加」または「アプリをインストール」をタップしてください。');
+          return;
+        }
+
+        this.deferredInstallPrompt.prompt();
+        const choiceResult = await this.deferredInstallPrompt.userChoice;
+        console.log('[PWA] User choice:', choiceResult.outcome);
+        this.deferredInstallPrompt = null;
+        if (banner) banner.style.display = 'none';
+      });
+    }
+
+    if (dismissBtn) {
+      dismissBtn.addEventListener('click', () => {
+        if (banner) banner.style.display = 'none';
+        sessionStorage.setItem('vl800_dismiss_install', 'true');
+      });
+    }
+
+    window.addEventListener('appinstalled', () => {
+      console.log('[PWA] App successfully installed to home screen!');
+      if (banner) banner.style.display = 'none';
+    });
   },
 
   switchTab(tabId) {
