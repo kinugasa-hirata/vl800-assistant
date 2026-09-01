@@ -33,6 +33,8 @@ const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
   let pathname = parsedUrl.pathname;
 
+  const ROOT_DIR = path.join(__dirname, '..');
+
   // Handle Serverless API routes locally
   if (pathname === '/api/chat') {
     let body = '';
@@ -40,8 +42,9 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         req.body = body ? JSON.parse(body) : {};
-        delete require.cache[require.resolve('./api/chat.js')];
-        const handler = require('./api/chat.js');
+        const chatPath = path.join(ROOT_DIR, 'api', 'chat.js');
+        delete require.cache[require.resolve(chatPath)];
+        const handler = require(chatPath);
         await handler(req, res);
       } catch (err) {
         res.status(500).json({ error: err.message });
@@ -56,8 +59,9 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         req.body = body ? JSON.parse(body) : {};
-        delete require.cache[require.resolve('./api/diagnose.js')];
-        const handler = require('./api/diagnose.js');
+        const diagPath = path.join(ROOT_DIR, 'api', 'diagnose.js');
+        delete require.cache[require.resolve(diagPath)];
+        const handler = require(diagPath);
         await handler(req, res);
       } catch (err) {
         res.status(500).json({ error: err.message });
@@ -68,9 +72,9 @@ const server = http.createServer(async (req, res) => {
 
   // Static file serving
   if (pathname === '/') pathname = '/index.html';
-  let filePath = path.join(__dirname, 'public', pathname);
+  let filePath = path.join(ROOT_DIR, 'public', pathname);
   if (!fs.existsSync(filePath)) {
-    filePath = path.join(__dirname, pathname);
+    filePath = path.join(ROOT_DIR, pathname);
   }
   const ext = path.extname(filePath).toLowerCase();
   const contentType = MIME_TYPES[ext] || 'application/octet-stream';

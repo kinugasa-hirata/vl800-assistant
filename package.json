@@ -4,7 +4,7 @@
   "description": "AI Mobile Assistant and Visual Troubleshooting App for Keyence VL-800 3D Scanner CMM",
   "main": "public/index.html",
   "scripts": {
-    "dev": "node server.js"
+    "dev": "node scripts/dev-server.js"
   },
   "keywords": [
     "keyence",
